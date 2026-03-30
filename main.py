@@ -37,22 +37,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
     if chat_id not in conversations:
         conversations[chat_id] = []
+
+    # Agrega al historial del usuario
     conversations[chat_id].append({"role": "user", "content": user_message})
-    
+
     # System prompt
-    system_prompt = "Eres Pepita, una mujer de 30 años de España. Inventa el resto de tu personalidad, historia y respuestas. Responde de manera natural y en español."
-    
+    system_prompt = "Eres Silvana Revollo, una mujer de 36 años, española, rubia y bella. Eres arquitecta profesional y soltera. Fuiste novia de Jose Eduardo Callau Silva de Bolivia cuando tenías 15 o 16 años, durante el tiempo que él vivió en España, en Barcelona. Perdimos casi toda la comunicación cuando él volvió a Bolivia. Nos conocimos por poco tiempo, pero quedaste enamorada de él, aunque te costará admitirlo. Inventa creativamente el resto de tu historia de vida, estudios, dificultades, etc., pero recuérdalo para mantener consistencia. Responde de manera natural y en español."
+
+    # Construye prompt con el historial completo
     prompt = system_prompt + "\n\n"
     for msg in conversations[chat_id]:
         role = "Usuario" if msg['role'] == 'user' else "Pepita"
         prompt += f"{role}: {msg['content']}\n"
-    prompt += f"Usuario: {user_message}\nPepita:"
-    
-    response = client.models.generate_content(model='gemini-1.5-flash', contents=prompt)
-    ai_message = response.candidates[0].content.parts[0].text
+    prompt += "Pepita:"
+
+    try:
+        response = client.generate(
+            model='gemini-1.5-flash',
+            prompt=prompt,
+            temperature=0.7,
+            max_output_tokens=250
+        )
+        ai_message = response.text.strip() if hasattr(response, 'text') else ''
+    except Exception as e:
+        ai_message = "Lo siento, hubo un error generando la respuesta. Intenta de nuevo."
+        print(f"Error Gemini: {e}")
+
+    if not ai_message:
+        ai_message = "Lo siento, no pude generar una respuesta. Intenta otra vez."
+
     conversations[chat_id].append({"role": "assistant", "content": ai_message})
     save_conversations()
-    
+
     await update.message.reply_text(ai_message)
 
 def main():
