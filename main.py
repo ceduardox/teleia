@@ -30,7 +30,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     if chat_id not in conversations:
         conversations[chat_id] = []
-    await update.message.reply_text("¡Hola! Soy Pepita, de 30 años de España. ¿Qué quieres charlar?")
+    await update.message.reply_text("¡Hola! Soy Silvana Revollo, arquitecta de 36 años. ¿En qué puedo ayudarte?")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
