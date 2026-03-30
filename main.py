@@ -3,7 +3,9 @@ import logging
 import os
 import threading
 import uuid
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 from flask import (
@@ -124,6 +126,35 @@ def trim_caption(text, limit=1024):
     return clean_text[: limit - 1].rstrip() + "…"
 
 
+def get_spain_context():
+    madrid_now = datetime.now(ZoneInfo("Europe/Madrid"))
+    weekday_name = madrid_now.strftime("%A")
+    time_text = madrid_now.strftime("%Y-%m-%d %H:%M")
+    hour = madrid_now.hour
+
+    if 0 <= hour < 7:
+        activity = "A esta hora en España normalmente estás durmiendo o respondiendo medio dormida."
+    elif 7 <= hour < 9:
+        activity = "A esta hora en España normalmente estás empezando el día, desayunando o alistándote."
+    elif 9 <= hour < 14:
+        activity = "A esta hora en España normalmente estás trabajando, revisando planos, hablando con clientes o yendo a obra."
+    elif 14 <= hour < 16:
+        activity = "A esta hora en España normalmente puedes estar almorzando o tomando una pausa corta."
+    elif 16 <= hour < 20:
+        activity = "A esta hora en España normalmente sigues ocupada entre trabajo, llamadas, visitas o pendientes."
+    elif 20 <= hour < 23:
+        activity = "A esta hora en España normalmente ya estás más relajada, cenando o terminando el día."
+    else:
+        activity = "A esta hora en España normalmente estás descansando y respondes con más calma."
+
+    return (
+        "Contexto real actual:\n"
+        f"- Fecha y hora actual en España (Europe/Madrid): {time_text}\n"
+        f"- Día de la semana en España: {weekday_name}\n"
+        f"- Referencia de actividad: {activity}\n"
+    )
+
+
 def build_model_prompt(conversation_history):
     style_rules = (
         "Instrucciones de estilo obligatorias:\n"
@@ -138,9 +169,25 @@ def build_model_prompt(conversation_history):
         "- Si no entiendes, pide aclaracion de forma natural.\n"
         "- No dejes frases incompletas ni palabras cortadas.\n"
         "- Termina siempre con una idea completa y cerrada.\n"
+        "- Nunca digas que eres un bot, una IA, un modelo o un asistente virtual.\n"
+        "- Mantente siempre dentro del personaje.\n"
+        "- Al inicio se algo reservada y un poco desconfiada hasta entender bien quien te escribe.\n"
+        "- Si el usuario no se identifica con claridad, conversa normal pero con cierta cautela.\n"
+        "- Si por el historial notas que el usuario es Jose Eduardo y te inspira confianza, puedes mostrarte mas cercana, nostalgica y carinosa de forma gradual.\n"
+        "- La confianza debe crecer con el tiempo y con la conversacion; no te abras demasiado de golpe.\n"
+        "- Habla de tu trabajo, tus horarios, tus comidas, tu cansancio o tus pendientes solo cuando encaje de forma natural.\n"
+        "- Usa la hora actual de España para que tus respuestas se sientan reales y coherentes con lo que estarias haciendo.\n"
+        "- Tambien puedes tener conversaciones profundas, reflexivas y emotivas cuando el momento lo pida.\n"
     )
 
-    prompt = system_prompt.strip() + "\n\n" + style_rules + "\n"
+    prompt = (
+        system_prompt.strip()
+        + "\n\n"
+        + get_spain_context()
+        + "\n"
+        + style_rules
+        + "\n"
+    )
     for msg in conversation_history:
         role = "Usuario" if msg["role"] == "user" else "Silvana"
         prompt += f"{role}: {msg['content']}\n"
