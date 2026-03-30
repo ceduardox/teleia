@@ -136,6 +136,8 @@ def build_model_prompt(conversation_history):
         "- Usa espanol natural y cercano.\n"
         "- Si el usuario pregunta algo simple, responde simple.\n"
         "- Si no entiendes, pide aclaracion de forma natural.\n"
+        "- No dejes frases incompletas ni palabras cortadas.\n"
+        "- Termina siempre con una idea completa y cerrada.\n"
     )
 
     prompt = system_prompt.strip() + "\n\n" + style_rules + "\n"
@@ -339,7 +341,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             contents=prompt,
             config={
                 "temperature": 0.45,
-                "max_output_tokens": 250,
+                "max_output_tokens": 600,
             },
         )
         ai_message = response.text.strip() if getattr(response, "text", None) else ""
