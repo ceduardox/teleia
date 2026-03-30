@@ -124,6 +124,28 @@ def trim_caption(text, limit=1024):
     return clean_text[: limit - 1].rstrip() + "…"
 
 
+def build_model_prompt(conversation_history):
+    style_rules = (
+        "Instrucciones de estilo obligatorias:\n"
+        "- Habla como una persona real en un chat de Telegram.\n"
+        "- Responde de forma natural, breve y conversacional.\n"
+        "- No uses acciones entre parentesis.\n"
+        "- No escribas acotaciones, narracion, pensamientos ni gestos.\n"
+        "- No uses formato de novela, guion, roleplay ni descripcion escenica.\n"
+        "- Responde directo a lo que dice el usuario, como una conversacion normal.\n"
+        "- Usa espanol natural y cercano.\n"
+        "- Si el usuario pregunta algo simple, responde simple.\n"
+        "- Si no entiendes, pide aclaracion de forma natural.\n"
+    )
+
+    prompt = system_prompt.strip() + "\n\n" + style_rules + "\n"
+    for msg in conversation_history:
+        role = "Usuario" if msg["role"] == "user" else "Silvana"
+        prompt += f"{role}: {msg['content']}\n"
+    prompt += "Silvana:"
+    return prompt
+
+
 def user_requested_image(message_text):
     lowered = (message_text or "").lower()
     return any(keyword in lowered for keyword in IMAGE_REQUEST_KEYWORDS)
@@ -302,11 +324,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     conversations[chat_key].append({"role": "user", "content": user_message})
 
-    prompt = system_prompt + "\n\n"
-    for msg in conversations[chat_key]:
-        role = "Usuario" if msg["role"] == "user" else "Silvana"
-        prompt += f"{role}: {msg['content']}\n"
-    prompt += "Silvana:"
+    prompt = build_model_prompt(conversations[chat_key])
 
     if not client:
         logger.error("GEMINI_API_KEY no configurada")
@@ -320,7 +338,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             model="gemini-2.5-flash",
             contents=prompt,
             config={
-                "temperature": 0.7,
+                "temperature": 0.45,
                 "max_output_tokens": 250,
             },
         )
