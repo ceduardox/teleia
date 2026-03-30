@@ -49,13 +49,17 @@ En Telegram, busca tu bot y envía `/start` para comenzar.
 
 Luego, chatea normalmente. El bot responderá como Pepita.
 
-## Personalización
+## Panel de Admin
 
-Para cambiar el personaje, edita el `system_prompt` en `main.py`.
+Accede al dominio de Railway y ve a `/admin` para editar el prompt del bot. Usa la contraseña configurada en `ADMIN_PASSWORD`.
 
-Para usar OpenAI en lugar de Gemini, instala `openai` y modifica el código.
+- `/`: Página de estado del bot.
+- `/admin`: Login y edición del prompt (cambia la personalidad de Silvana en tiempo real).
 
-## Notas
+## Variables de Entorno
 
-- Las conversaciones se guardan en `conversations.json` para persistencia.
-- Asegúrate de no compartir tus claves API.
+Agrega en Railway:
+- `TELEGRAM_BOT_TOKEN`: Token del bot.
+- `GEMINI_API_KEY`: Clave de Gemini.
+- `ADMIN_PASSWORD`: Contraseña para el panel (ej: admin123).
+- `SECRET_KEY`: Clave secreta para sesiones (ej: una cadena aleatoria).
