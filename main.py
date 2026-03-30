@@ -36,11 +36,14 @@ def admin():
         if 'password' in request.form:
             if request.form['password'] == ADMIN_PASSWORD:
                 session['logged_in'] = True
+                if 'remember' in request.form:
+                    session.permanent = True
                 return redirect(url_for('admin'))
             else:
                 return render_template_string('''
                 <form method="post">
                 Contraseña: <input type="password" name="password"><br>
+                <input type="checkbox" name="remember"> Recordar sesión<br>
                 <input type="submit" value="Login">
                 </form>
                 <p>Contraseña incorrecta</p>
@@ -64,6 +67,7 @@ def admin():
         return render_template_string('''
         <form method="post">
         Contraseña: <input type="password" name="password"><br>
+        <input type="checkbox" name="remember"> Recordar sesión<br>
         <input type="submit" value="Login">
         </form>
         ''')
