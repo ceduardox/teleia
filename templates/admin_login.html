@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TeleIA Admin</title>
+  <style>
+    :root {
+      --bg: #0b1320;
+      --panel: rgba(10, 20, 36, 0.84);
+      --line: rgba(255, 255, 255, 0.1);
+      --text: #eef4ff;
+      --muted: #9db0cd;
+      --accent: #f4b942;
+      --accent-2: #50d4c8;
+      --danger: #ff7b7b;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(80, 212, 200, 0.14), transparent 24%),
+        radial-gradient(circle at bottom right, rgba(244, 185, 66, 0.18), transparent 30%),
+        linear-gradient(155deg, #08101a 0%, #121f35 48%, #090e16 100%);
+      padding: 24px;
+    }
+
+    .card {
+      width: min(460px, 100%);
+      padding: 36px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+    }
+
+    .eyebrow {
+      color: var(--accent-2);
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      font-size: 12px;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 2.4rem;
+      line-height: 0.95;
+    }
+
+    p {
+      margin: 0 0 24px;
+      color: var(--muted);
+    }
+
+    form {
+      display: grid;
+      gap: 16px;
+    }
+
+    label {
+      display: grid;
+      gap: 8px;
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+
+    input[type="password"] {
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      font: inherit;
+    }
+
+    .remember {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    button {
+      border: 0;
+      border-radius: 16px;
+      padding: 14px 18px;
+      font: inherit;
+      font-weight: 700;
+      color: #171717;
+      background: linear-gradient(135deg, var(--accent), #ffe19c);
+      cursor: pointer;
+    }
+
+    .error {
+      background: rgba(255, 123, 123, 0.14);
+      border: 1px solid rgba(255, 123, 123, 0.28);
+      color: #ffd0d0;
+      padding: 14px 16px;
+      border-radius: 16px;
+      margin-bottom: 18px;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="eyebrow">TeleIA Admin</div>
+    <h1>Controla el personaje.</h1>
+    <p>Entra al panel para editar el prompt, subir imágenes y definir qué foto puede enviar el bot.</p>
+    {% if error %}
+      <div class="error">{{ error }}</div>
+    {% endif %}
+    <form method="post">
+      <input type="hidden" name="action" value="login">
+      <label>
+        Contraseña
+        <input type="password" name="password" placeholder="Ingresa tu contraseña" required>
+      </label>
+      <label class="remember">
+        <input type="checkbox" name="remember">
+        Mantener sesión abierta
+      </label>
+      <button type="submit">Entrar al panel</button>
+    </form>
+  </main>
+</body>
+</html>

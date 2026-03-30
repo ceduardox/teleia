@@ -1,4 +1,6 @@
 .env
 conversations.json
+bot_config.json
+uploads/
 __pycache__/
 *.pyc
