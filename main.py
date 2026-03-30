@@ -3,6 +3,7 @@ import logging
 import os
 import threading
 import uuid
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -378,6 +379,13 @@ def user_requested_image(message_text):
     return any(keyword in lowered for keyword in IMAGE_REQUEST_KEYWORDS)
 
 
+async def simulate_typing_delay(update: Update, outgoing_text=""):
+    message_length = len((outgoing_text or "").strip())
+    delay_seconds = min(4.2, max(1.2, 0.75 + (message_length / 90)))
+    await update.message.chat.send_action(action="typing")
+    await asyncio.sleep(delay_seconds)
+
+
 def get_conversation_history(chat_key, limit=CONTEXT_MESSAGE_LIMIT):
     if DATABASE_ENABLED:
         with get_db_connection() as connection:
@@ -553,6 +561,8 @@ async def send_active_photo(update: Update, caption=None):
     if not image_path:
         return False
 
+    await update.message.chat.send_action(action="upload_photo")
+    await asyncio.sleep(1.4)
     with image_path.open("rb") as image_file:
         await update.message.reply_photo(photo=image_file, caption=trim_caption(caption))
     return True
@@ -561,6 +571,7 @@ async def send_active_photo(update: Update, caption=None):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_key = str(update.effective_chat.id)
     logger.info("Comando /start recibido para chat_id=%s", chat_key)
+    await simulate_typing_delay(update, "Hola, soy Silvana Revollo.")
     await update.message.reply_text(
         "¡Hola! Soy Silvana Revollo, arquitecta de 36 años. ¿En qué puedo ayudarte?"
     )
@@ -585,6 +596,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not client:
         logger.error("GEMINI_API_KEY no configurada")
+        await simulate_typing_delay(update, "El bot no tiene configurada la clave de Gemini.")
         await update.message.reply_text(
             "El bot no tiene configurada la clave de Gemini."
         )
@@ -610,6 +622,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     append_message_to_history(chat_key, "assistant", ai_message)
 
     if user_requested_image(user_message):
+        await simulate_typing_delay(update, ai_message)
         sent = await send_active_photo(update, ai_message)
         if not sent:
             await update.message.reply_text(
@@ -617,6 +630,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
+    await simulate_typing_delay(update, ai_message)
     await update.message.reply_text(ai_message)
 
 
