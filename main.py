@@ -49,7 +49,7 @@ IMAGE_REQUEST_KEYWORDS = (
 DEFAULT_BOT_CONFIG = {"active_image": None, "image_caption": ""}
 SETTINGS_TABLE = "bot_settings"
 MESSAGES_TABLE = "conversation_messages"
-CONTEXT_MESSAGE_LIMIT = 60
+CONTEXT_MESSAGE_LIMIT = 160
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
