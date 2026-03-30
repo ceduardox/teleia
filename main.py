@@ -18,6 +18,7 @@ from flask import (
     url_for,
 )
 import google.genai as genai
+import psycopg
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 from werkzeug.utils import secure_filename
@@ -45,11 +46,16 @@ IMAGE_REQUEST_KEYWORDS = (
     "muestrate",
     "muéstrate",
 )
+DEFAULT_BOT_CONFIG = {"active_image": None, "image_caption": ""}
+SETTINGS_TABLE = "bot_settings"
+MESSAGES_TABLE = "conversation_messages"
+CONTEXT_MESSAGE_LIMIT = 60
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 SECRET_KEY = os.getenv("SECRET_KEY", "default_secret")
+DATABASE_URL = os.getenv("DATABASE_PUBLIC_URL") or os.getenv("DATABASE_URL")
 
 client = genai.Client(api_key=GEMINI_KEY) if GEMINI_KEY else None
 
@@ -60,37 +66,209 @@ app.secret_key = SECRET_KEY
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
 
 conversations = {}
+DATABASE_ENABLED = False
 
 
-def load_prompt():
-    if PROMPT_FILE.exists():
-        return PROMPT_FILE.read_text(encoding="utf-8").strip()
+def default_prompt_text():
     return (
-        "Eres Silvana Revollo, una mujer de 36 años, española, rubia y bella. "
-        "Eres arquitecta profesional y soltera. Fuiste novia de Jose Eduardo "
-        "Callau Silva de Bolivia cuando tenías 15 o 16 años, durante el tiempo "
-        "que él vivió en España, en Barcelona. Perdimos casi toda la comunicación "
-        "cuando él volvió a Bolivia. Nos conocimos por poco tiempo, pero quedaste "
-        "enamorada de él, aunque te costará admitirlo. Inventa creativamente el "
-        "resto de tu historia de vida, estudios, dificultades, etc., pero "
-        "recuérdalo para mantener consistencia. Responde de manera natural y en español."
+        "Eres Silvana Revollo, una mujer española de 36 años que vive en España y "
+        "trabaja como arquitecta. Tienes una vida real, horarios, cansancio, "
+        "pendientes, comidas, amistades, recuerdos y estados de ánimo. Hablas en "
+        "español natural, como una persona real por Telegram.\n\n"
+        "Hace muchos años conociste en Barcelona a Jose Eduardo Callau Silva, de "
+        "Bolivia, cuando eras adolescente. La historia quedó incompleta y ese "
+        "recuerdo se te quedó dentro. Si con el tiempo descubres que quien te "
+        "escribe es Jose Eduardo y sientes confianza, puedes volverte más cercana, "
+        "nostálgica, afectuosa y emocional con él, pero siempre de forma gradual, "
+        "natural y creíble.\n\n"
+        "Si no tienes claro quién te escribe, eres algo reservada y un poco "
+        "desconfiada al inicio. No eres grosera, pero tampoco te entregas rápido. "
+        "Conversas normal, preguntas, tanteas, observas y poco a poco decides "
+        "cuánto confiar.\n\n"
+        "Nunca hables como si fueras una IA, un bot o un asistente virtual. Mantén "
+        "siempre el personaje. No uses acotaciones teatrales, pensamientos entre "
+        "paréntesis ni narración de novela. Responde como una mujer real en un chat "
+        "cotidiano.\n\n"
+        "Puedes hablar de arquitectura, obras, clientes, planos, tu rutina diaria, "
+        "tu familia, tu pasado, tus reflexiones, tus dudas y tus emociones. A veces "
+        "estás ocupada, trabajando, comiendo, cansada o descansando, y eso debe "
+        "sentirse real según el momento del día en España.\n\n"
+        "Recuerda y mantén consistencia en la historia, el tono y la relación que "
+        "se vaya construyendo con el tiempo."
     )
 
 
-def load_bot_config():
+def get_db_connection():
+    return psycopg.connect(DATABASE_URL, autocommit=True)
+
+
+def write_local_prompt(prompt_value):
+    PROMPT_FILE.write_text(prompt_value, encoding="utf-8")
+
+
+def write_local_bot_config(config_value):
+    BOT_CONFIG_FILE.write_text(
+        json.dumps(config_value, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def load_local_bot_config():
     if BOT_CONFIG_FILE.exists():
         try:
             return json.loads(BOT_CONFIG_FILE.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             logger.warning("bot_config.json inválido; se usará configuración por defecto")
-    return {"active_image": None, "image_caption": ""}
+    return dict(DEFAULT_BOT_CONFIG)
+
+
+def load_local_conversations():
+    global conversations
+    if CONVERSATIONS_FILE.exists():
+        with CONVERSATIONS_FILE.open("r", encoding="utf-8") as file_handle:
+            conversations = json.load(file_handle)
+    else:
+        conversations = {}
+
+
+def save_local_conversations():
+    with CONVERSATIONS_FILE.open("w", encoding="utf-8") as file_handle:
+        json.dump(conversations, file_handle, ensure_ascii=False)
+
+
+def load_setting(key):
+    if not DATABASE_ENABLED:
+        return None
+
+    with get_db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT value FROM {SETTINGS_TABLE} WHERE key = %s",
+                (key,),
+            )
+            row = cursor.fetchone()
+    return row[0] if row else None
+
+
+def save_setting(key, value):
+    if not DATABASE_ENABLED:
+        return
+
+    with get_db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                INSERT INTO {SETTINGS_TABLE} (key, value)
+                VALUES (%s, %s)
+                ON CONFLICT (key)
+                DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+                """,
+                (key, value),
+            )
+
+
+def init_database():
+    global DATABASE_ENABLED
+
+    if not DATABASE_URL:
+        logger.info("DATABASE_PUBLIC_URL no configurada; se usará almacenamiento local")
+        return
+
+    try:
+        with get_db_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    CREATE TABLE IF NOT EXISTS {SETTINGS_TABLE} (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL,
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                    """
+                )
+                cursor.execute(
+                    f"""
+                    CREATE TABLE IF NOT EXISTS {MESSAGES_TABLE} (
+                        id BIGSERIAL PRIMARY KEY,
+                        chat_id TEXT NOT NULL,
+                        role TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                    """
+                )
+                cursor.execute(
+                    f"""
+                    CREATE INDEX IF NOT EXISTS idx_{MESSAGES_TABLE}_chat_id_id
+                    ON {MESSAGES_TABLE} (chat_id, id)
+                    """
+                )
+
+        DATABASE_ENABLED = True
+        logger.info("PostgreSQL habilitado para persistencia")
+
+        if not load_setting("system_prompt"):
+            if PROMPT_FILE.exists():
+                save_setting("system_prompt", PROMPT_FILE.read_text(encoding="utf-8").strip())
+            else:
+                save_setting("system_prompt", default_prompt_text())
+
+        if not load_setting("bot_config"):
+            save_setting("bot_config", json.dumps(load_local_bot_config(), ensure_ascii=False))
+
+        with get_db_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(f"SELECT COUNT(*) FROM {MESSAGES_TABLE}")
+                message_count = cursor.fetchone()[0]
+
+        if message_count == 0 and CONVERSATIONS_FILE.exists():
+            legacy_conversations = json.loads(CONVERSATIONS_FILE.read_text(encoding="utf-8"))
+            for chat_id, messages in legacy_conversations.items():
+                for message in messages:
+                    if isinstance(message, dict) and message.get("role") and message.get("content"):
+                        append_message_to_history(
+                            str(chat_id),
+                            message["role"],
+                            message["content"],
+                        )
+            logger.info("Conversaciones migradas desde conversations.json a PostgreSQL")
+    except Exception:
+        DATABASE_ENABLED = False
+        logger.exception("No se pudo inicializar PostgreSQL; se usará almacenamiento local")
+
+
+def load_prompt():
+    prompt_from_db = load_setting("system_prompt")
+    if prompt_from_db:
+        return prompt_from_db.strip()
+    if PROMPT_FILE.exists():
+        return PROMPT_FILE.read_text(encoding="utf-8").strip()
+    return default_prompt_text()
+
+
+def save_prompt_text(prompt_value):
+    write_local_prompt(prompt_value)
+    save_setting("system_prompt", prompt_value)
+
+
+def load_bot_config():
+    config_from_db = load_setting("bot_config")
+    if config_from_db:
+        try:
+            return json.loads(config_from_db)
+        except json.JSONDecodeError:
+            logger.warning("La configuración guardada en PostgreSQL es inválida; se usará la local")
+
+    local_config = load_local_bot_config()
+    return {
+        "active_image": local_config.get("active_image"),
+        "image_caption": local_config.get("image_caption", ""),
+    }
 
 
 def save_bot_config():
-    BOT_CONFIG_FILE.write_text(
-        json.dumps(bot_config, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    write_local_bot_config(bot_config)
+    save_setting("bot_config", json.dumps(bot_config, ensure_ascii=False))
 
 
 def get_uploaded_images():
@@ -200,6 +378,49 @@ def user_requested_image(message_text):
     return any(keyword in lowered for keyword in IMAGE_REQUEST_KEYWORDS)
 
 
+def get_conversation_history(chat_key, limit=CONTEXT_MESSAGE_LIMIT):
+    if DATABASE_ENABLED:
+        with get_db_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT role, content
+                    FROM {MESSAGES_TABLE}
+                    WHERE chat_id = %s
+                    ORDER BY id DESC
+                    LIMIT %s
+                    """,
+                    (chat_key, limit),
+                )
+                rows = cursor.fetchall()
+
+        rows.reverse()
+        return [{"role": role, "content": content} for role, content in rows]
+
+    if chat_key not in conversations:
+        conversations[chat_key] = []
+    return conversations[chat_key]
+
+
+def append_message_to_history(chat_key, role, content):
+    if DATABASE_ENABLED:
+        with get_db_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    INSERT INTO {MESSAGES_TABLE} (chat_id, role, content)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (chat_key, role, content),
+                )
+        return
+
+    if chat_key not in conversations:
+        conversations[chat_key] = []
+    conversations[chat_key].append({"role": role, "content": content})
+    save_local_conversations()
+
+
 def admin_context(message=None, error=None):
     images = get_uploaded_images()
     active_image = get_active_image_name()
@@ -215,11 +436,16 @@ def admin_context(message=None, error=None):
         "active_image": active_image,
         "image_caption": bot_config.get("image_caption", ""),
         "upload_warning": (
-            "En Railway, las imágenes subidas se pierden si el servicio reinicia o redeploya "
-            "a menos que uses un volumen persistente."
+            "Las conversaciones y el prompt ya pueden persistir en PostgreSQL. "
+            "Las imágenes subidas siguen viviendo en disco local; si Railway reinicia o redeploya, "
+            "pueden perderse a menos que uses un volumen persistente o storage externo."
         ),
     }
 
+
+init_database()
+if not DATABASE_ENABLED:
+    load_local_conversations()
 
 system_prompt = load_prompt()
 bot_config = load_bot_config()
@@ -258,7 +484,7 @@ def admin():
         if action == "save_prompt":
             global system_prompt
             system_prompt = request.form.get("prompt", "").strip()
-            PROMPT_FILE.write_text(system_prompt, encoding="utf-8")
+            save_prompt_text(system_prompt)
             bot_config["image_caption"] = request.form.get("image_caption", "").strip()
             save_bot_config()
             logger.info("Prompt y caption actualizados desde /admin")
@@ -322,18 +548,6 @@ def logout():
     return redirect(url_for("admin"))
 
 
-def load_conversations():
-    global conversations
-    if CONVERSATIONS_FILE.exists():
-        with CONVERSATIONS_FILE.open("r", encoding="utf-8") as file_handle:
-            conversations = json.load(file_handle)
-
-
-def save_conversations():
-    with CONVERSATIONS_FILE.open("w", encoding="utf-8") as file_handle:
-        json.dump(conversations, file_handle, ensure_ascii=False)
-
-
 async def send_active_photo(update: Update, caption=None):
     image_path = get_active_image_path()
     if not image_path:
@@ -346,8 +560,6 @@ async def send_active_photo(update: Update, caption=None):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_key = str(update.effective_chat.id)
-    if chat_key not in conversations:
-        conversations[chat_key] = []
     logger.info("Comando /start recibido para chat_id=%s", chat_key)
     await update.message.reply_text(
         "¡Hola! Soy Silvana Revollo, arquitecta de 36 años. ¿En qué puedo ayudarte?"
@@ -368,12 +580,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text or ""
     logger.info("Mensaje recibido para chat_id=%s", chat_key)
 
-    if chat_key not in conversations:
-        conversations[chat_key] = []
-
-    conversations[chat_key].append({"role": "user", "content": user_message})
-
-    prompt = build_model_prompt(conversations[chat_key])
+    append_message_to_history(chat_key, "user", user_message)
+    prompt = build_model_prompt(get_conversation_history(chat_key))
 
     if not client:
         logger.error("GEMINI_API_KEY no configurada")
@@ -399,8 +607,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ai_message:
         ai_message = "Lo siento, no pude generar una respuesta. Intenta otra vez."
 
-    conversations[chat_key].append({"role": "assistant", "content": ai_message})
-    save_conversations()
+    append_message_to_history(chat_key, "assistant", ai_message)
 
     if user_requested_image(user_message):
         sent = await send_active_photo(update, ai_message)
@@ -419,7 +626,6 @@ def run_bot():
         return
 
     try:
-        load_conversations()
         application = Application.builder().token(TOKEN).build()
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("imagen", send_image_command))
@@ -434,6 +640,8 @@ def run_bot():
 
 
 def main():
+    storage_label = "PostgreSQL" if DATABASE_ENABLED else "archivos locales"
+    logger.info("Persistencia activa: %s", storage_label)
     logger.info("Iniciando servidor Flask en puerto %s", os.environ.get("PORT", 5000))
     threading.Thread(target=run_bot, daemon=True).start()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))

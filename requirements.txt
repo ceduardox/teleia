@@ -2,3 +2,4 @@ python-telegram-bot
 google-genai
 python-dotenv
 flask
+psycopg[binary]
