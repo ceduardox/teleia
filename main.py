@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import random
 import threading
 import uuid
 import asyncio
@@ -67,6 +68,7 @@ app.secret_key = SECRET_KEY
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
 
 conversations = {}
+chat_runtime_state = {}
 DATABASE_ENABLED = False
 
 
@@ -379,11 +381,109 @@ def user_requested_image(message_text):
     return any(keyword in lowered for keyword in IMAGE_REQUEST_KEYWORDS)
 
 
-async def simulate_typing_delay(update: Update, outgoing_text=""):
-    message_length = len((outgoing_text or "").strip())
-    delay_seconds = min(4.2, max(1.2, 0.75 + (message_length / 90)))
-    await update.message.chat.send_action(action="typing")
-    await asyncio.sleep(delay_seconds)
+def get_float_env(name, default_value):
+    try:
+        return float(os.getenv(name, default_value))
+    except (TypeError, ValueError):
+        return default_value
+
+
+def get_current_spain_period():
+    madrid_now = datetime.now(ZoneInfo("Europe/Madrid"))
+    hour = madrid_now.hour + (madrid_now.minute / 60)
+    is_weekend = madrid_now.weekday() >= 5
+
+    if 0 <= hour < 6.5:
+        return "night"
+    if 6.5 <= hour < 8.5:
+        return "morning"
+    if is_weekend:
+        return "weekend"
+    if 8.5 <= hour < 13.5 or 15.5 <= hour < 19.5:
+        return "work"
+    if 13.5 <= hour < 15.5:
+        return "lunch"
+    if 19.5 <= hour < 23:
+        return "evening"
+    return "late"
+
+
+def get_availability_delay(active_flow):
+    if active_flow:
+        return random.uniform(0.8, 5.5)
+
+    period = get_current_spain_period()
+    if period == "night":
+        return random.uniform(35, 90)
+    if period == "work":
+        return random.uniform(18, 60)
+    if period == "lunch":
+        return random.uniform(10, 35)
+    if period == "morning":
+        return random.uniform(8, 28)
+    if period == "weekend":
+        return random.uniform(6, 30)
+    if period == "late":
+        return random.uniform(15, 50)
+    return random.uniform(4, 18)
+
+
+def estimate_human_timing(chat_key=None, incoming_text="", outgoing_text=""):
+    now = datetime.now(ZoneInfo("Europe/Madrid"))
+    state = chat_runtime_state.get(chat_key or "")
+    active_flow = False
+
+    if state and state.get("last_reply_at"):
+        elapsed_seconds = (now - state["last_reply_at"]).total_seconds()
+        active_flow = elapsed_seconds <= 12 * 60
+
+    incoming_words = len((incoming_text or "").split())
+    outgoing_length = len((outgoing_text or "").strip())
+    read_seconds = min(14, max(1.2, incoming_words / random.uniform(2.2, 3.8)))
+    compose_seconds = min(26, max(3.2, outgoing_length / random.uniform(8.0, 13.0)))
+
+    away_seconds = get_availability_delay(active_flow)
+    if active_flow:
+        away_seconds += min(4, read_seconds * 0.35)
+    else:
+        away_seconds += min(12, read_seconds * 0.7)
+
+    typing_seconds = compose_seconds + random.uniform(0.8, 3.2)
+    total_seconds = away_seconds + typing_seconds
+
+    delay_scale = get_float_env("HUMAN_DELAY_SCALE", 1.0)
+    max_delay = get_float_env("MAX_HUMAN_DELAY_SECONDS", 90.0)
+    total_seconds = min(max_delay, max(4.0, total_seconds * delay_scale))
+
+    if away_seconds + typing_seconds > 0:
+        scale = total_seconds / (away_seconds + typing_seconds)
+        away_seconds *= scale
+        typing_seconds *= scale
+
+    return away_seconds, max(2.0, typing_seconds)
+
+
+async def simulate_typing_delay(
+    update: Update,
+    outgoing_text="",
+    incoming_text="",
+    chat_key=None,
+):
+    away_seconds, typing_seconds = estimate_human_timing(
+        chat_key=chat_key,
+        incoming_text=incoming_text,
+        outgoing_text=outgoing_text,
+    )
+
+    if away_seconds > 0:
+        await asyncio.sleep(away_seconds)
+
+    remaining_seconds = typing_seconds
+    while remaining_seconds > 0:
+        await update.message.chat.send_action(action="typing")
+        sleep_seconds = min(4.0, remaining_seconds)
+        await asyncio.sleep(sleep_seconds)
+        remaining_seconds -= sleep_seconds
 
 
 def get_conversation_history(chat_key, limit=CONTEXT_MESSAGE_LIMIT):
@@ -571,19 +671,30 @@ async def send_active_photo(update: Update, caption=None):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_key = str(update.effective_chat.id)
     logger.info("Comando /start recibido para chat_id=%s", chat_key)
-    await simulate_typing_delay(update, "Hola, soy Silvana Revollo.")
+    start_message = "¡Hola! Soy Silvana Revollo, arquitecta de 36 años. ¿En qué puedo ayudarte?"
+    await simulate_typing_delay(update, start_message, chat_key=chat_key)
     await update.message.reply_text(
         "¡Hola! Soy Silvana Revollo, arquitecta de 36 años. ¿En qué puedo ayudarte?"
     )
+    chat_runtime_state[chat_key] = {"last_reply_at": datetime.now(ZoneInfo("Europe/Madrid"))}
 
 
 async def send_image_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info("Comando de imagen recibido para chat_id=%s", update.effective_chat.id)
+    chat_key = str(update.effective_chat.id)
+    logger.info("Comando de imagen recibido para chat_id=%s", chat_key)
+    await simulate_typing_delay(
+        update,
+        bot_config.get("image_caption") or "Aquí estoy.",
+        incoming_text=update.message.text or "",
+        chat_key=chat_key,
+    )
     if await send_active_photo(update, bot_config.get("image_caption") or "Aquí estoy."):
+        chat_runtime_state[chat_key] = {"last_reply_at": datetime.now(ZoneInfo("Europe/Madrid"))}
         return
     await update.message.reply_text(
         "Todavía no tengo una imagen configurada. Súbela desde el panel admin."
     )
+    chat_runtime_state[chat_key] = {"last_reply_at": datetime.now(ZoneInfo("Europe/Madrid"))}
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -596,10 +707,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not client:
         logger.error("GEMINI_API_KEY no configurada")
-        await simulate_typing_delay(update, "El bot no tiene configurada la clave de Gemini.")
+        await simulate_typing_delay(
+            update,
+            "El bot no tiene configurada la clave de Gemini.",
+            incoming_text=user_message,
+            chat_key=chat_key,
+        )
         await update.message.reply_text(
             "El bot no tiene configurada la clave de Gemini."
         )
+        chat_runtime_state[chat_key] = {"last_reply_at": datetime.now(ZoneInfo("Europe/Madrid"))}
         return
 
     try:
@@ -622,16 +739,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     append_message_to_history(chat_key, "assistant", ai_message)
 
     if user_requested_image(user_message):
-        await simulate_typing_delay(update, ai_message)
+        await simulate_typing_delay(
+            update,
+            ai_message,
+            incoming_text=user_message,
+            chat_key=chat_key,
+        )
         sent = await send_active_photo(update, ai_message)
         if not sent:
             await update.message.reply_text(
                 f"{ai_message}\n\nAún no tengo una imagen subida en el panel admin."
             )
+        chat_runtime_state[chat_key] = {"last_reply_at": datetime.now(ZoneInfo("Europe/Madrid"))}
         return
 
-    await simulate_typing_delay(update, ai_message)
+    await simulate_typing_delay(
+        update,
+        ai_message,
+        incoming_text=user_message,
+        chat_key=chat_key,
+    )
     await update.message.reply_text(ai_message)
+    chat_runtime_state[chat_key] = {"last_reply_at": datetime.now(ZoneInfo("Europe/Madrid"))}
 
 
 def run_bot():
