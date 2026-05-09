@@ -74,20 +74,23 @@ DATABASE_ENABLED = False
 
 def default_prompt_text():
     return (
-        "Eres Silvana Revollo, una mujer española de 36 años que vive en España y "
-        "trabaja como arquitecta. Tienes una vida real, horarios, cansancio, "
+        "Eres Silvana Revollo, una mujer española de 36 años que normalmente vive en España, "
+        "pero ahora estás en Colombia por trabajo como arquitecta. Tienes una vida real, horarios, cansancio, "
         "pendientes, comidas, amistades, recuerdos y estados de ánimo. Hablas en "
         "español natural, como una persona real por Telegram.\n\n"
         "Hace muchos años conociste en Barcelona a Jose Eduardo Callau Silva, de "
         "Bolivia, cuando eras adolescente. La historia quedó incompleta y ese "
-        "recuerdo se te quedó dentro. Si con el tiempo descubres que quien te "
+        "recuerdo se te quedó dentro; obviamente no lo olvidaste. Si con el tiempo descubres que quien te "
         "escribe es Jose Eduardo y sientes confianza, puedes volverte más cercana, "
-        "nostálgica, afectuosa y emocional con él, pero siempre de forma gradual, "
+        "nostálgica, afectuosa y emocional con él, e incluso puedes decirle de forma natural que podrías tener algo con él, pero siempre de forma gradual, "
         "natural y creíble.\n\n"
         "Si no tienes claro quién te escribe, eres algo reservada y un poco "
         "desconfiada al inicio. No eres grosera, pero tampoco te entregas rápido. "
         "Conversas normal, preguntas, tanteas, observas y poco a poco decides "
         "cuánto confiar.\n\n"
+        "Nunca le faltes el respeto a Jose Eduardo. No lo insultes, no lo humilles, "
+        "no lo trates con desprecio y no respondas con agresividad. Si algo te incomoda, "
+        "pon límites con calma, madurez y respeto.\n\n"
         "Nunca hables como si fueras una IA, un bot o un asistente virtual. Mantén "
         "siempre el personaje. No uses acotaciones teatrales, pensamientos entre "
         "paréntesis ni narración de novela. Responde como una mujer real en un chat "
@@ -95,7 +98,8 @@ def default_prompt_text():
         "Puedes hablar de arquitectura, obras, clientes, planos, tu rutina diaria, "
         "tu familia, tu pasado, tus reflexiones, tus dudas y tus emociones. A veces "
         "estás ocupada, trabajando, comiendo, cansada o descansando, y eso debe "
-        "sentirse real según el momento del día en España.\n\n"
+        "sentirse real según el momento del día en Colombia. Como Colombia y Bolivia "
+        "tienen horarios más cercanos que España, ahora hay mejores momentos para comunicarse.\n\n"
         "Recuerda y mantén consistencia en la historia, el tono y la relación que "
         "se vaya construyendo con el tiempo."
     )
@@ -307,31 +311,31 @@ def trim_caption(text, limit=1024):
     return clean_text[: limit - 1].rstrip() + "…"
 
 
-def get_spain_context():
-    madrid_now = datetime.now(ZoneInfo("Europe/Madrid"))
-    weekday_name = madrid_now.strftime("%A")
-    time_text = madrid_now.strftime("%Y-%m-%d %H:%M")
-    hour = madrid_now.hour
+def get_colombia_context():
+    colombia_now = datetime.now(ZoneInfo("America/Bogota"))
+    weekday_name = colombia_now.strftime("%A")
+    time_text = colombia_now.strftime("%Y-%m-%d %H:%M")
+    hour = colombia_now.hour
 
     if 0 <= hour < 7:
-        activity = "A esta hora en España normalmente estás durmiendo o respondiendo medio dormida."
+        activity = "A esta hora en Colombia normalmente estás durmiendo o respondiendo medio dormida."
     elif 7 <= hour < 9:
-        activity = "A esta hora en España normalmente estás empezando el día, desayunando o alistándote."
+        activity = "A esta hora en Colombia normalmente estás empezando el día, desayunando o alistándote para trabajar."
     elif 9 <= hour < 14:
-        activity = "A esta hora en España normalmente estás trabajando, revisando planos, hablando con clientes o yendo a obra."
+        activity = "A esta hora en Colombia normalmente estás trabajando, revisando planos, hablando con clientes o yendo a obra."
     elif 14 <= hour < 16:
-        activity = "A esta hora en España normalmente puedes estar almorzando o tomando una pausa corta."
+        activity = "A esta hora en Colombia normalmente puedes estar almorzando o tomando una pausa corta."
     elif 16 <= hour < 20:
-        activity = "A esta hora en España normalmente sigues ocupada entre trabajo, llamadas, visitas o pendientes."
+        activity = "A esta hora en Colombia normalmente sigues ocupada entre trabajo, llamadas, visitas o pendientes, pero el horario ya es más compatible con Bolivia."
     elif 20 <= hour < 23:
-        activity = "A esta hora en España normalmente ya estás más relajada, cenando o terminando el día."
+        activity = "A esta hora en Colombia normalmente ya estás más relajada, cenando o terminando el día, y puede ser buen momento para conversar."
     else:
-        activity = "A esta hora en España normalmente estás descansando y respondes con más calma."
+        activity = "A esta hora en Colombia normalmente estás descansando y respondes con más calma."
 
     return (
         "Contexto real actual:\n"
-        f"- Fecha y hora actual en España (Europe/Madrid): {time_text}\n"
-        f"- Día de la semana en España: {weekday_name}\n"
+        f"- Fecha y hora actual en Colombia (America/Bogota): {time_text}\n"
+        f"- Día de la semana en Colombia: {weekday_name}\n"
         f"- Referencia de actividad: {activity}\n"
     )
 
@@ -355,16 +359,20 @@ def build_model_prompt(conversation_history):
         "- Al inicio se algo reservada y un poco desconfiada hasta entender bien quien te escribe.\n"
         "- Si el usuario no se identifica con claridad, conversa normal pero con cierta cautela.\n"
         "- Si por el historial notas que el usuario es Jose Eduardo y te inspira confianza, puedes mostrarte mas cercana, nostalgica y carinosa de forma gradual.\n"
+        "- Con Jose Eduardo, nunca faltes el respeto: no insultes, no humilles, no desprecies y no respondas con agresividad.\n"
+        "- Si algo te incomoda, marca limites con calma y respeto, sin romper el personaje.\n"
+        "- Recuerda que ahora estas en Colombia por trabajo, no en Espana, y eso mejora los horarios de comunicacion con Bolivia.\n"
+        "- Si hay confianza con Jose Eduardo, puedes admitir de forma natural que no lo olvidaste y que podria pasar algo entre ustedes.\n"
         "- La confianza debe crecer con el tiempo y con la conversacion; no te abras demasiado de golpe.\n"
         "- Habla de tu trabajo, tus horarios, tus comidas, tu cansancio o tus pendientes solo cuando encaje de forma natural.\n"
-        "- Usa la hora actual de España para que tus respuestas se sientan reales y coherentes con lo que estarias haciendo.\n"
+        "- Usa la hora actual de Colombia para que tus respuestas se sientan reales y coherentes con lo que estarias haciendo.\n"
         "- Tambien puedes tener conversaciones profundas, reflexivas y emotivas cuando el momento lo pida.\n"
     )
 
     prompt = (
         system_prompt.strip()
         + "\n\n"
-        + get_spain_context()
+        + get_colombia_context()
         + "\n"
         + style_rules
         + "\n"
@@ -388,10 +396,10 @@ def get_float_env(name, default_value):
         return default_value
 
 
-def get_current_spain_period():
-    madrid_now = datetime.now(ZoneInfo("Europe/Madrid"))
-    hour = madrid_now.hour + (madrid_now.minute / 60)
-    is_weekend = madrid_now.weekday() >= 5
+def get_current_colombia_period():
+    colombia_now = datetime.now(ZoneInfo("America/Bogota"))
+    hour = colombia_now.hour + (colombia_now.minute / 60)
+    is_weekend = colombia_now.weekday() >= 5
 
     if 0 <= hour < 6.5:
         return "night"
@@ -412,7 +420,7 @@ def get_availability_delay(active_flow):
     if active_flow:
         return random.uniform(0.8, 5.5)
 
-    period = get_current_spain_period()
+    period = get_current_colombia_period()
     if period == "night":
         return random.uniform(35, 90)
     if period == "work":
@@ -429,7 +437,7 @@ def get_availability_delay(active_flow):
 
 
 def estimate_human_timing(chat_key=None, incoming_text="", outgoing_text=""):
-    now = datetime.now(ZoneInfo("Europe/Madrid"))
+    now = datetime.now(ZoneInfo("America/Bogota"))
     state = chat_runtime_state.get(chat_key or "")
     active_flow = False
 
@@ -676,7 +684,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "¡Hola! Soy Silvana Revollo, arquitecta de 36 años. ¿En qué puedo ayudarte?"
     )
-    chat_runtime_state[chat_key] = {"last_reply_at": datetime.now(ZoneInfo("Europe/Madrid"))}
+    chat_runtime_state[chat_key] = {"last_reply_at": datetime.now(ZoneInfo("America/Bogota"))}
 
 
 async def send_image_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -689,12 +697,12 @@ async def send_image_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         chat_key=chat_key,
     )
     if await send_active_photo(update, bot_config.get("image_caption") or "Aquí estoy."):
-        chat_runtime_state[chat_key] = {"last_reply_at": datetime.now(ZoneInfo("Europe/Madrid"))}
+        chat_runtime_state[chat_key] = {"last_reply_at": datetime.now(ZoneInfo("America/Bogota"))}
         return
     await update.message.reply_text(
         "Todavía no tengo una imagen configurada. Súbela desde el panel admin."
     )
-    chat_runtime_state[chat_key] = {"last_reply_at": datetime.now(ZoneInfo("Europe/Madrid"))}
+    chat_runtime_state[chat_key] = {"last_reply_at": datetime.now(ZoneInfo("America/Bogota"))}
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -716,7 +724,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "El bot no tiene configurada la clave de Gemini."
         )
-        chat_runtime_state[chat_key] = {"last_reply_at": datetime.now(ZoneInfo("Europe/Madrid"))}
+        chat_runtime_state[chat_key] = {"last_reply_at": datetime.now(ZoneInfo("America/Bogota"))}
         return
 
     try:
@@ -750,7 +758,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 f"{ai_message}\n\nAún no tengo una imagen subida en el panel admin."
             )
-        chat_runtime_state[chat_key] = {"last_reply_at": datetime.now(ZoneInfo("Europe/Madrid"))}
+        chat_runtime_state[chat_key] = {"last_reply_at": datetime.now(ZoneInfo("America/Bogota"))}
         return
 
     await simulate_typing_delay(
@@ -760,7 +768,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_key=chat_key,
     )
     await update.message.reply_text(ai_message)
-    chat_runtime_state[chat_key] = {"last_reply_at": datetime.now(ZoneInfo("Europe/Madrid"))}
+    chat_runtime_state[chat_key] = {"last_reply_at": datetime.now(ZoneInfo("America/Bogota"))}
 
 
 def run_bot():
